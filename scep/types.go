@@ -1,13 +1,18 @@
 package scep
 
 import (
+	"crypto/x509"
 	"github.com/sirupsen/logrus"
 )
 
 type CSR struct {
-	CsrPEM    string         `json:"csrpem" required:"true"`
-	AuthToken string         `json:"authtoken" required:"true"`
-	Logger    *logrus.Logger `json:"-"`
+	CsrPEM           string         `json:"csrpem"`
+	CsrB64           string         `json:"csrb64"`
+	AuthToken        string         `json:"authtoken" required:"true"`
+	Logger           *logrus.Logger `json:"-"`
+	BC               BasicConstraints
+	KeyUsages        []x509.KeyUsage
+	ExtendedKeyUsage []x509.ExtKeyUsage
 }
 
 type BasicConstraints struct {

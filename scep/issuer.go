@@ -4,9 +4,9 @@ import (
 	rand2 "crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"github.com/sirupsen/logrus"
 	"math/big"
 	"math/rand"
@@ -22,20 +22,16 @@ var (
 	CARootKey         = "ca.key"
 	ValidityYears     = 1
 	AuthorizedDomains = stringSlice{"omegahome.net", "omegaworld.net"}
-	ExtendedKeyUsage  []x509.ExtKeyUsage
-	BC                *BasicConstraints
-	KeyUsages         []x509.KeyUsage
 )
 
 func (c *CSR) CSRValidate() error {
-	fmt.Printf("CSR Validate %s", c.CsrPEM)
-
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
-	logger.Info("Validating CSR: ", c.CsrPEM)
+	logger.Debug("Validating CSR: ", c.CsrPEM)
 	csr, err := c.ParseCSR()
 	if err != nil {
 		return err
 	}
+
 	if err := csr.CheckSignature(); err != nil {
 		logger.WithError(err).Error("Error checking CSR signature")
 	} else {
@@ -58,7 +54,7 @@ func (c *CSR) CSRValidate() error {
 	logger.Info("sans: ", csr.DNSNames)
 	logger.Info("commonName: ", csr.Subject.CommonName)
 
-	if err = c.GetExtendedKeyUsage(); err != nil {
+	if err = c.GetExtendedKeyUsage(csr); err != nil {
 		logger.WithError(err).Error("Error validating CSR, GetExtendedKeyUsage")
 	}
 
@@ -67,7 +63,7 @@ func (c *CSR) CSRValidate() error {
 
 func (c *CSR) ValidateSuffix(suffix string) error {
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
-	logger.Info("Validating suffix: ", suffix)
+	logger.Debug("Validating suffix: ", suffix)
 
 	for _, domain := range AuthorizedDomains {
 		if strings.HasSuffix(suffix, domain) {
@@ -85,7 +81,7 @@ func (c *CSR) Issue() ([]byte, error) {
 		return nil, err
 	}
 	var combinedKeyUsages x509.KeyUsage
-	for _, ku := range KeyUsages {
+	for _, ku := range c.KeyUsages {
 		combinedKeyUsages |= ku
 	}
 
@@ -95,11 +91,11 @@ func (c *CSR) Issue() ([]byte, error) {
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().AddDate(ValidityYears, 0, 0),
 		KeyUsage:     combinedKeyUsages,
-		ExtKeyUsage:  ExtendedKeyUsage,
+		ExtKeyUsage:  c.ExtendedKeyUsage,
 		DNSNames:     csr.DNSNames,
 		IPAddresses:  csr.IPAddresses,
-		IsCA:         BC.IsCA,
-		MaxPathLen:   BC.MaxPathLen,
+		IsCA:         c.BC.IsCA,
+		MaxPathLen:   c.BC.MaxPathLen,
 	}
 
 	caPEM, err := os.ReadFile(CARoot)
@@ -144,13 +140,28 @@ func (c *CSR) Issue() ([]byte, error) {
 }
 
 func (c *CSR) ParseCSR() (*x509.CertificateRequest, error) {
+	var csrPEM []byte
+	var err error
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
 	logger.Info("Parsing CSR")
-	csrPEM, err := os.ReadFile(c.CsrPEM)
-	if err != nil {
-		logger.WithError(err).Error("Error reading CSR")
-		return nil, err
+
+	if c.CsrPEM != "" {
+		csrPEM, err = os.ReadFile(c.CsrPEM)
+		if err != nil {
+			logger.WithError(err).Error("Error reading CSR")
+			return nil, err
+		}
+	} else if c.CsrB64 != "" {
+		csrPEM, err = base64.StdEncoding.DecodeString(c.CsrB64)
+		if err != nil {
+			logger.WithError(err).Error("Error decoding CSR")
+			return nil, err
+		}
+	} else {
+		logger.Error("No CSR provided")
+		return nil, errors.New("no CSR provided")
 	}
+
 	csrBlock, _ := pem.Decode(csrPEM)
 	if csrBlock == nil || csrBlock.Type != "CERTIFICATE REQUEST" {
 		logger.WithError(err).Error("Error reading CSR, invalid CSR")
@@ -165,30 +176,24 @@ func (c *CSR) ParseCSR() (*x509.CertificateRequest, error) {
 	return csr, nil
 }
 
-func (c *CSR) GetExtendedKeyUsage() error {
+func (c *CSR) GetExtendedKeyUsage(csr *x509.CertificateRequest) error {
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
 	logger.Info("Getting extended key usage")
-	csr, err := c.ParseCSR()
-	if err != nil {
-		return err
-	}
 
 	for _, ext := range csr.Extensions {
-		fmt.Println("ext: ", ext.Id)
-		fmt.Println("value: ", ext.Value)
 		switch {
 		case ext.Id.Equal([]int{2, 5, 29, 19}):
 			//basicConstraints
 			var bc BasicConstraints
 			_, err := asn1.Unmarshal(ext.Value, &bc)
 
-			BC = &bc
+			c.BC = bc
 
 			if err != nil {
 				logger.WithError(err).Error("Error parsing Basic Constraints")
 			}
-			logger.Infof("Using Basic Constraints maxPathLen: %v", BC.MaxPathLen)
-			logger.Infof("Using Basic Constraints isCA: %v", BC.IsCA)
+			logger.Debugf("Using Basic Constraints maxPathLen: %v", c.BC.MaxPathLen)
+			logger.Debugf("Using Basic Constraints isCA: %v", c.BC.IsCA)
 
 		case ext.Id.Equal([]int{2, 5, 29, 15}):
 			//usageBits
@@ -198,32 +203,32 @@ func (c *CSR) GetExtendedKeyUsage() error {
 			if err != nil {
 				logger.WithError(err).Error("Error parsing usagebits")
 			} else {
-				logger.Info("Usage bits: ", usageBits)
+				logger.Debug("Usage bits: ", usageBits)
 				for i := 0; i < usageBits.BitLength; i++ {
 					if usageBits.At(i) == 1 {
 						logger.Info("Key usage: ", keyUsageNames[i])
 						switch i {
 						case 0:
-							KeyUsages = append(KeyUsages, x509.KeyUsageDigitalSignature)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageDigitalSignature)
 						case 1:
-							KeyUsages = append(KeyUsages, x509.KeyUsageContentCommitment)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageContentCommitment)
 						case 2:
-							KeyUsages = append(KeyUsages, x509.KeyUsageKeyEncipherment)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageKeyEncipherment)
 						case 3:
-							KeyUsages = append(KeyUsages, x509.KeyUsageDataEncipherment)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageDataEncipherment)
 						case 4:
-							KeyUsages = append(KeyUsages, x509.KeyUsageKeyAgreement)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageKeyAgreement)
 						case 5:
-							KeyUsages = append(KeyUsages, x509.KeyUsageCertSign)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageCertSign)
 						case 6:
-							KeyUsages = append(KeyUsages, x509.KeyUsageCRLSign)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageCRLSign)
 						case 7:
-							KeyUsages = append(KeyUsages, x509.KeyUsageEncipherOnly)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageEncipherOnly)
 						case 8:
-							KeyUsages = append(KeyUsages, x509.KeyUsageDecipherOnly)
+							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageDecipherOnly)
 						}
 					} else {
-						logger.Info("Key usage not set: ", keyUsageNames[i])
+						logger.Errorf("Key usage not set: %s", keyUsageNames[i])
 
 					}
 				}
@@ -239,31 +244,31 @@ func (c *CSR) GetExtendedKeyUsage() error {
 				for _, id := range extKeyUsage {
 					switch {
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 1}):
-						logger.Info("serverAuth")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageServerAuth)
+						logger.Info("ExtendedKeyUsage: serverAuth")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageServerAuth)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 2}):
-						logger.Info("clientAuth")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageClientAuth)
+						logger.Info("ExtendedKeyUsage: clientAuth")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageClientAuth)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 3}):
-						logger.Info("codeSigning")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageCodeSigning)
+						logger.Info("ExtendedKeyUsage: codeSigning")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageCodeSigning)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 4}):
-						logger.Info("emailProtection")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageEmailProtection)
+						logger.Info("ExtendedKeyUsage: emailProtection")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageEmailProtection)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 5}):
-						logger.Info("ipsecEndSystem")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageIPSECEndSystem)
+						logger.Info("ExtendedKeyUsage: ipsecEndSystem")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageIPSECEndSystem)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 6}):
-						logger.Info("ipsecTunnel")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageIPSECTunnel)
+						logger.Info("ExtendedKeyUsage: ipsecTunnel")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageIPSECTunnel)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 7}):
-						logger.Info("ipsecUser")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageIPSECUser)
+						logger.Info("ExtendedKeyUsage: ipsecUser")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageIPSECUser)
 					case id.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 8}):
-						logger.Info("timeStamping")
-						ExtendedKeyUsage = append(ExtendedKeyUsage, x509.ExtKeyUsageTimeStamping)
+						logger.Info("ExtendedKeyUsage: timeStamping")
+						c.ExtendedKeyUsage = append(c.ExtendedKeyUsage, x509.ExtKeyUsageTimeStamping)
 					default:
-						logger.Info("Unknown extended key usage: ", id)
+						logger.Errorf("Unknown extended key usage: %d", id)
 					}
 				}
 			}
