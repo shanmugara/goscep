@@ -20,18 +20,6 @@ type BasicConstraints struct {
 	MaxPathLen int  `asn1:"optional"`
 }
 
-//type KeyUsage struct {
-//	digitalSignature asn1.BitString `asn1:"optional"`
-//	nonRepudiation   asn1.BitString `asn1:"optional"`
-//	keyEncipherment  asn1.BitString `asn1:"optional"`
-//	dataEncipherment asn1.BitString `asn1:"optional"`
-//	keyAgreement     asn1.BitString `asn1:"optional"`
-//	keyCertSign      asn1.BitString `asn1:"optional"`
-//	cRLSign          asn1.BitString `asn1:"optional"`
-//	encipherOnly     asn1.BitString `asn1:"optional"`
-//	decipherOnly     asn1.BitString `asn1:"optional"`
-//}
-
 var keyUsageNames = map[int]string{
 	0: "DigitalSignature",
 	1: "ContentCommitment", // a.k.a. NonRepudiation
