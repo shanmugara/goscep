@@ -31,6 +31,15 @@ func (s *stringSlice) Set(value string) error {
 	return nil
 }
 
+type ServerConfig struct {
+	Port              int
+	Server            string
+	CARoot            string
+	CARootKey         string
+	ValidityYears     int
+	AuthorizedDomains stringSlice
+}
+
 type BasicConstraints struct {
 	IsCA       bool `asn1:"optional"`
 	MaxPathLen int  `asn1:"optional"`

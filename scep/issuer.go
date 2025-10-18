@@ -16,13 +16,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var (
-	CARoot            = "ca.crt"
-	CARootKey         = "ca.key"
-	ValidityYears     = 1
-	AuthorizedDomains = stringSlice{"omegahome.net", "omegaworld.net"}
-)
-
 func (c *CSR) CSRValidate() error {
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
 	logger.Debug("Validating CSR: ", c.CsrPEM)
@@ -65,7 +58,7 @@ func (c *CSR) ValidateSuffix(suffix string) error {
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
 	logger.Debug("Validating suffix: ", suffix)
 
-	for _, domain := range AuthorizedDomains {
+	for _, domain := range Config.AuthorizedDomains {
 		if strings.HasSuffix(suffix, domain) {
 			return nil
 		}
@@ -89,7 +82,7 @@ func (c *CSR) Issue() ([]byte, error) {
 		SerialNumber: big.NewInt(rand.Int63()),
 		Subject:      csr.Subject,
 		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(ValidityYears, 0, 0),
+		NotAfter:     time.Now().AddDate(Config.ValidityYears, 0, 0),
 		KeyUsage:     combinedKeyUsages,
 		ExtKeyUsage:  c.ExtendedKeyUsage,
 		DNSNames:     csr.DNSNames,
@@ -98,7 +91,7 @@ func (c *CSR) Issue() ([]byte, error) {
 		MaxPathLen:   c.BC.MaxPathLen,
 	}
 
-	caPEM, err := os.ReadFile(CARoot)
+	caPEM, err := os.ReadFile(Config.CARoot)
 	if err != nil {
 		logger.WithError(err).Error("Error reading CA certificate")
 		return nil, err
@@ -113,7 +106,7 @@ func (c *CSR) Issue() ([]byte, error) {
 		logger.WithError(err).Error("Error parsing CA certificate")
 		return nil, err
 	}
-	caKeyPEM, err := os.ReadFile("ca.key")
+	caKeyPEM, err := os.ReadFile(Config.CARootKey)
 	if err != nil {
 		logger.WithError(err).Error("Error reading CA key")
 		return nil, err
