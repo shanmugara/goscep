@@ -2,6 +2,8 @@ package scep
 
 import (
 	"crypto/x509"
+	"strings"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -13,6 +15,20 @@ type CSR struct {
 	BC               BasicConstraints
 	KeyUsages        []x509.KeyUsage
 	ExtendedKeyUsage []x509.ExtKeyUsage
+}
+
+type stringSlice []string
+
+func (s *stringSlice) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *stringSlice) Set(value string) error {
+	parts := strings.Split(value, ",")
+	for _, part := range parts {
+		*s = append(*s, strings.TrimSpace(part))
+	}
+	return nil
 }
 
 type BasicConstraints struct {

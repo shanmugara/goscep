@@ -1,4 +1,4 @@
-module bbgithub.dev.bloomberg.com/speriyas/goscep
+module github.com/shanmugara/goscep
 
 go 1.22.0
 

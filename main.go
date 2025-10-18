@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bbgithub.dev.bloomberg.com/speriyas/goscep/scep"
 	"flag"
+
+	"github.com/shanmugara/goscep/scep"
 )
 
 func main() {
@@ -13,6 +14,7 @@ func main() {
 	flag.IntVar(&scep.ValidityYears, "validity-years", 1, "Validity years")
 	flag.IntVar(&scep.Port, "port", 8080, "Port to run the server on")
 	flag.StringVar(&scep.Server, "server", "localhost", "Server address")
+	flag.Var(&scep.AuthorizedDomains, "authorized-domains", "Comma separated list of authorized domains")
 
 	flag.Parse()
 	//fmt.Printf("CSR Validate %s", *csrFile)

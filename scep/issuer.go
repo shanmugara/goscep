@@ -7,15 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
-	"github.com/sirupsen/logrus"
 	"math/big"
 	"math/rand"
 	"os"
 	"strings"
 	"time"
-)
 
-type stringSlice []string
+	"github.com/sirupsen/logrus"
+)
 
 var (
 	CARoot            = "ca.crt"
@@ -56,6 +55,7 @@ func (c *CSR) CSRValidate() error {
 
 	if err = c.GetExtendedKeyUsage(csr); err != nil {
 		logger.WithError(err).Error("Error validating CSR, GetExtendedKeyUsage")
+		return err
 	}
 
 	return nil
@@ -226,6 +226,8 @@ func (c *CSR) GetExtendedKeyUsage(csr *x509.CertificateRequest) error {
 							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageEncipherOnly)
 						case 8:
 							c.KeyUsages = append(c.KeyUsages, x509.KeyUsageDecipherOnly)
+						default:
+							logger.Errorf("Unknown key usage: %s", keyUsageNames[i])
 						}
 					} else {
 						logger.Errorf("Key usage not set: %s", keyUsageNames[i])
