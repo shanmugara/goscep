@@ -9,5 +9,5 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/goscep .
 EXPOSE 8080
-CMD ["./goscep"]
-
+ENTRYPOINT ["./goscep"]
+CMD []
