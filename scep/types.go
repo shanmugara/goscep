@@ -38,6 +38,7 @@ type ServerConfig struct {
 	CARootKey         string
 	ValidityYears     int
 	AuthorizedDomains stringSlice
+	SpiffeIDs         string
 }
 
 type BasicConstraints struct {
@@ -55,4 +56,8 @@ var keyUsageNames = map[int]string{
 	6: "CRLSign",
 	7: "EncipherOnly",
 	8: "DecipherOnly",
+}
+
+type SpiffeIDConfig struct {
+	AuthorizedSpiffeIDs []string `yaml:"authorized_spiffe_ids"`
 }

@@ -1,6 +1,7 @@
 package scep
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -9,17 +10,49 @@ import (
 )
 
 var Config *ServerConfig
+var Logger *logrus.Logger
 
 func Start() error {
-	logger := logrus.New()
-	logger.Infof("Starting server %s on port %d", Config.Server, Config.Port)
+	// Ensure a logger is available for the package
+	if Logger == nil {
+		Logger = logrus.New()
+	}
+	if Config == nil {
+		return fmt.Errorf("server config is nil")
+	}
+	Logger.Infof("Starting server %s on port %d", Config.Server, Config.Port)
+	ctx := context.Background()
 	router := gin.Default()
 	router.POST("/v1/cert/request", Request())
-
-	err := router.Run(fmt.Sprintf("%s:%d", Config.Server, Config.Port))
+	// get spire tls config
+	tlsConfig, err := GetTlsConfig(ctx)
 	if err != nil {
+		Logger.Fatalf("failed to get TLS config: %v", err)
 		return err
 	}
+	srv := &http.Server{
+		Addr:      fmt.Sprintf("%s:%d", Config.Server, Config.Port),
+		Handler:   router,
+		TLSConfig: tlsConfig,
+	}
+
+	go func() {
+		if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			Logger.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server with
+	// a timeout of 5 seconds.
+	quit := make(chan struct{})
+	<-quit
+	Logger.Println("Shutting down server...")
+
+	if err := srv.Shutdown(ctx); err != nil {
+		Logger.Fatal("Server forced to shutdown:", err)
+	}
+
+	Logger.Println("Server exiting")
 	return nil
 }
 
@@ -30,7 +63,12 @@ func Request() gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		csr.Logger = logrus.New()
+		// use package logger if present, otherwise fall back to a new one
+		if Logger == nil {
+			csr.Logger = logrus.New()
+		} else {
+			csr.Logger = Logger
+		}
 		if err := csr.CSRValidate(); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
