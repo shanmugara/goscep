@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -22,10 +23,13 @@ func Start() error {
 	}
 	Logger.Infof("Starting server %s on port %d", Config.Server, Config.Port)
 	ctx := context.Background()
+	tlsCtx, tsCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer tsCancel()
+
 	router := gin.Default()
 	router.POST("/v1/cert/request", Request())
 	// get spire tls config
-	tlsConfig, err := GetTlsConfig(ctx)
+	tlsConfig, err := GetTlsConfig(tlsCtx)
 	if err != nil {
 		Logger.Fatalf("failed to get TLS config: %v", err)
 		return err
@@ -47,8 +51,9 @@ func Start() error {
 	quit := make(chan struct{})
 	<-quit
 	Logger.Println("Shutting down server...")
-
-	if err := srv.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer shutdownCancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		Logger.Fatal("Server forced to shutdown:", err)
 	}
 

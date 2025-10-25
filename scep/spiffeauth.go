@@ -41,9 +41,7 @@ func LoadSpiffeIDs() ([]spiffeid.ID, error) {
 	return spiffeIds, nil
 }
 
-func getMySvid() (spiffeid.ID, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func getMySvid(ctx context.Context) (spiffeid.ID, error) {
 	svid, err := workloadapi.FetchX509SVID(ctx)
 	if err != nil {
 		return spiffeid.ID{}, fmt.Errorf("unable to fetch X509 SVID: %w", err)
@@ -56,10 +54,8 @@ func GetTlsConfig(ctx context.Context) (*tls.Config, error) {
 	if Logger == nil {
 		Logger = logrus.New()
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
-	wlSvid, err := getMySvid()
+	wlSvid, err := getMySvid(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get my SVID: %w", err)
 	}
@@ -89,11 +85,6 @@ func GetTlsConfig(ctx context.Context) (*tls.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to create X509Source: %w", err)
 	}
-	defer func() {
-		if cerr := source.Close(); cerr != nil {
-			Logger.Errorf("failed to close X509Source: %v", cerr)
-		}
-	}()
 
 	var tlsConfig *tls.Config
 	if len(allowed) > 0 {
@@ -102,7 +93,7 @@ func GetTlsConfig(ctx context.Context) (*tls.Config, error) {
 		tlsConfig = tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeOneOf(allowed...))
 	} else {
 		// Allow any workload from the default trust domain
-		Logger.Warn("no allowed X509 SVID, using default trust domain authorization")
+		Logger.Warn("no allowed X509 SVID, using default trust domain authorization: " + wlSvid.TrustDomain().String())
 		tlsConfig = tlsconfig.MTLSServerConfig(source, source, tlsconfig.AuthorizeMemberOf(wlSvid.TrustDomain()))
 	}
 
