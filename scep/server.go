@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shanmugara/spireauthlib"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,7 +30,9 @@ func Start() error {
 	router := gin.Default()
 	router.POST("/v1/cert/request", Request())
 	// get spire tls config
-	tlsConfig, err := GetTlsConfig(tlsCtx)
+	sAuth := spireauthlib.ServerAuth{Logger: Logger}
+	tlsConfig, err := sAuth.GetTlsConfig(tlsCtx)
+
 	if err != nil {
 		Logger.Fatalf("failed to get TLS config: %v", err)
 		return err
