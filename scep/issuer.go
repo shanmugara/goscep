@@ -166,6 +166,11 @@ func (c *CSR) ParseCSR() (*x509.CertificateRequest, error) {
 		logger.WithError(err).Error("Error parsing CSR")
 		return nil, err
 	}
+
+	if len(csr.DNSNames) == 0 {
+		logger.Error("CSR contains no SAN. Appending Common Name as SAN.")
+		csr.DNSNames = append(csr.DNSNames, csr.Subject.CommonName)
+	}
 	return csr, nil
 }
 
