@@ -13,5 +13,6 @@ ENV SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
 # declare the mount point so users can bind-mount the host socket directory
 VOLUME ["/tmp/spire-agent/public/"]
 EXPOSE 8080
+EXPOSE 8443
 ENTRYPOINT ["./goscep"]
 CMD []

@@ -10,7 +10,7 @@ import (
 type CSR struct {
 	CsrPEM           string         `json:"csrpem"`
 	CsrB64           string         `json:"csrb64"`
-	AuthToken        string         `json:"authtoken" required:"true"`
+	AuthToken        string         `json:"authtoken"`
 	Logger           *logrus.Logger `json:"-"`
 	BC               BasicConstraints
 	KeyUsages        []x509.KeyUsage
@@ -32,10 +32,13 @@ func (s *stringSlice) Set(value string) error {
 }
 
 type ServerConfig struct {
-	Port              int
+	PortMtls          int
+	PortTls           int
 	Server            string
 	CARoot            string
 	CARootKey         string
+	TlsCert           string
+	TlsKey            string
 	ValidityYears     int
 	AuthorizedDomains stringSlice
 	SpiffeIDs         string
