@@ -12,6 +12,32 @@ pipeline {
       }
     }
 
+    stage('Determine next version') {
+          when { branch 'main' }
+          steps {
+            // Calculate next patch semver tag. If no tag exists, start from v0.0.1
+            // Use Groovy to fetch tags and compute the next version so we can reliably set
+            // an env var (avoids writing/sourcing a file and needing stash/unstash).
+            script {
+              // ensure tags are available
+              sh 'git fetch --tags'
+
+              def latest = sh(script: 'git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"', returnStdout: true).trim()
+              echo "Latest tag: ${latest}"
+
+              def ver = latest.replaceFirst(/^v/, '')
+              def parts = ver.tokenize('.')
+              def major = (parts.size() > 0) ? parts[0].toInteger() : 0
+              def minor = (parts.size() > 1) ? parts[1].toInteger() : 0
+              def patch = (parts.size() > 2) ? parts[2].toInteger() : 0
+              patch = patch + 1
+
+              env.NEW_TAG = "v${major}.${minor}.${patch}"
+              echo "NEW_TAG=${env.NEW_TAG}"
+            }
+          }
+        }
+
     stage('Build Docker image') {
       // Run only for main branch (works for Multibranch Pipeline where BRANCH_NAME is set).
       // Also allow execution when BRANCH_NAME is not set but GIT_BRANCH ends with /main (classic jobs).
@@ -28,8 +54,8 @@ pipeline {
           // Determine tag: prefer short git commit if available, else use build number
           def dockerPath = "shanmugara/goscep-server"
           def shortSha = (env.GIT_COMMIT != null && env.GIT_COMMIT.length() >= 8) ? env.GIT_COMMIT.take(8) : null
-          def imageTag = shortSha ?: "${env.BUILD_NUMBER ?: 'local'}"
-          def imageName = "${dockerPath}:${imageTag}"
+          //def imageTag = shortSha ?: "${env.BUILD_NUMBER ?: 'local'}"
+          def imageName = "${dockerPath}:${env.NEW_TAG}"
 
           echo "Building Docker image ${imageName}"
           sh "docker build -t ${imageName} ."
