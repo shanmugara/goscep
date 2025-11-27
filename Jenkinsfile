@@ -26,22 +26,25 @@ pipeline {
       steps {
         script {
           // Determine tag: prefer short git commit if available, else use build number
+          def dockerPath = "shanmugara/goscep-server"
           def shortSha = (env.GIT_COMMIT != null && env.GIT_COMMIT.length() >= 8) ? env.GIT_COMMIT.take(8) : null
           def imageTag = shortSha ?: "${env.BUILD_NUMBER ?: 'local'}"
-          def imageName = "goscep:${imageTag}"
+          def imageName = "${dockerPath}:${imageTag}"
 
           echo "Building Docker image ${imageName}"
           sh "docker build -t ${imageName} ."
 
           // also tag as latest locally
-          sh "docker tag ${imageName} goscep:latest || true"
+          // sh "docker tag ${imageName} goscep:latest || true"
 
           // Optionally push to registry (commented out). To enable pushing, configure credentials in Jenkins
           // and uncomment the following lines, replacing <registry>/<repo> with your registry.
           // sh "docker tag ${imageName} <registry>/<repo>:${imageTag}"
-          // withCredentials([usernamePassword(credentialsId: 'registry-creds', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
-          //   sh "docker login -u $REG_USER -p $REG_PASS <registry>"
-          //   sh "docker push <registry>/<repo>:${imageTag}"
+          withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+          sh "docker login -u $REG_USER -p $REG_PASS docker.io"
+          //sh "docker push <registry>/<repo>:${imageTag}"
+          sh "docker push ${imageName}"
+         }
           //   sh "docker push <registry>/<repo>:latest"
           // }
         }
