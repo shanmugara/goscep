@@ -19,6 +19,11 @@ import (
 var Config *ServerConfig
 var Logger *logrus.Logger
 
+const (
+	ListenerMTLS = "mtls"
+	ListenerTLS  = "tls"
+)
+
 func Start() error {
 	// Ensure a logger is available for the package
 	if Logger == nil {
@@ -32,7 +37,7 @@ func Start() error {
 	defer tsCancel()
 
 	mtlsRouter := gin.Default()
-	mtlsRouter.POST("/v1/cert/request", Request())
+	mtlsRouter.POST("/v1/cert/request", Request(ListenerMTLS))
 	// get spire tls config
 	sAuth := spireauthlib.ServerAuth{Logger: Logger}
 	mtlsConfig, err := sAuth.GetTlsConfig(tlsCtx)
@@ -48,7 +53,7 @@ func Start() error {
 	}
 
 	tlsRouter := gin.Default()
-	tlsRouter.POST("/v1/cert/request", Request())
+	tlsRouter.POST("/v1/cert/request", Request(ListenerTLS))
 
 	tlsConfig, err := BuildTlsConfig()
 	if err != nil {
@@ -154,13 +159,25 @@ func LoadAllowedCNs() ([]string, error) {
 	return cfg.AllowedCNs, nil
 }
 
-func Request() gin.HandlerFunc {
+func Request(listener string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var csr CSR
-		if err := c.ShouldBindJSON(&csr); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		if listener == ListenerMTLS {
+			if err := c.ShouldBindJSON(&csr); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 		}
+		if listener == ListenerTLS {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+			if csrBytes, err := c.GetRawData(); err != nil || len(csrBytes) == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "request body size exceeded or empty"})
+				return
+			} else {
+				csr.CsrRaw = csrBytes
+			}
+		}
+
 		// use package logger if present, otherwise fall back to a new one
 		if Logger == nil {
 			csr.Logger = logrus.New()

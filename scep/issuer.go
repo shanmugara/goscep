@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"strings"
@@ -143,36 +144,35 @@ func (c *CSR) ParseCSR() (*x509.CertificateRequest, error) {
 	logger.Info("Parsing CSR")
 
 	if c.CsrPEM != "" {
-		csrPEM, err = os.ReadFile(c.CsrPEM)
-		if err != nil {
-			logger.WithError(err).Error("Error reading CSR")
-			return nil, err
-		}
+		return nil, fmt.Errorf("CSR PEM is deprecated, use CSR B64 or CSR Raw instead")
 	} else if c.CsrB64 != "" {
 		csrPEM, err = base64.StdEncoding.DecodeString(c.CsrB64)
 		if err != nil {
 			logger.WithError(err).Error("Error decoding CSR")
 			return nil, err
 		}
+	} else if len(c.CsrRaw) > 0 {
+		csrPEM = c.CsrRaw
 	} else {
 		logger.Error("No CSR provided")
 		return nil, errors.New("no CSR provided")
 	}
 
-	csrBlock, _ := pem.Decode(csrPEM)
+	return ParseCSRbytes(csrPEM)
+}
+
+func ParseCSRbytes(csrBytes []byte) (*x509.CertificateRequest, error) {
+	csrBlock, _ := pem.Decode(csrBytes)
 	if csrBlock == nil || csrBlock.Type != "CERTIFICATE REQUEST" {
-		logger.WithError(err).Error("Error reading CSR, invalid CSR")
 		return nil, errors.New("error reading CSR, invalid CSR")
 	}
 
 	csr, err := x509.ParseCertificateRequest(csrBlock.Bytes)
 	if err != nil {
-		logger.WithError(err).Error("Error parsing CSR")
 		return nil, err
 	}
 
 	if len(csr.DNSNames) == 0 {
-		logger.Debug("CSR contains no SAN. Appending Common Name as SAN.")
 		csr.DNSNames = append(csr.DNSNames, csr.Subject.CommonName)
 	}
 	return csr, nil

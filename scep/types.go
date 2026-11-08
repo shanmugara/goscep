@@ -10,6 +10,7 @@ import (
 type CSR struct {
 	CsrPEM           string                   `json:"csrpem"`
 	CsrB64           string                   `json:"csrb64"`
+	CsrRaw           []byte                   `json:"-"`
 	Csr              *x509.CertificateRequest `json:"-"`
 	AuthToken        string                   `json:"authtoken"`
 	Logger           *logrus.Logger           `json:"-"`
