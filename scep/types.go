@@ -8,10 +8,11 @@ import (
 )
 
 type CSR struct {
-	CsrPEM           string         `json:"csrpem"`
-	CsrB64           string         `json:"csrb64"`
-	AuthToken        string         `json:"authtoken"`
-	Logger           *logrus.Logger `json:"-"`
+	CsrPEM           string                   `json:"csrpem"`
+	CsrB64           string                   `json:"csrb64"`
+	Csr              *x509.CertificateRequest `json:"-"`
+	AuthToken        string                   `json:"authtoken"`
+	Logger           *logrus.Logger           `json:"-"`
 	BC               BasicConstraints
 	KeyUsages        []x509.KeyUsage
 	ExtendedKeyUsage []x509.ExtKeyUsage
@@ -42,6 +43,7 @@ type ServerConfig struct {
 	ValidityYears     int
 	AuthorizedDomains stringSlice
 	SpiffeIDs         string
+	AllowedCNs        string
 }
 
 type BasicConstraints struct {
@@ -63,4 +65,8 @@ var keyUsageNames = map[int]string{
 
 type SpiffeIDConfig struct {
 	AuthorizedSpiffeIDs []string `yaml:"authorized_spiffe_ids"`
+}
+
+type AllowedCNsConfig struct {
+	AllowedCNs []string `yaml:"allowedcns"`
 }
