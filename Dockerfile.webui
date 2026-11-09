@@ -1,0 +1,18 @@
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+# cross-compile natively instead of running the Go toolchain under emulation
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -o goscep-webui ./cmd/webui
+
+FROM alpine:3.20
+WORKDIR /app
+COPY --from=builder /app/goscep-webui .
+# mount users.yaml, webui-tls.{crt,key}, webui-client.{crt,key} and ca.crt here
+VOLUME ["/scep"]
+EXPOSE 443
+ENTRYPOINT ["./goscep-webui"]
+CMD []

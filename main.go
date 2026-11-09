@@ -18,11 +18,12 @@ func main() {
 	flag.StringVar(&scep.Config.TlsCert, "tls-cert", "tls.crt", "TLS Certificate file path")
 	flag.StringVar(&scep.Config.TlsKey, "tls-key", "tls.key", "TLS Key file path")
 	flag.IntVar(&scep.Config.ValidityYears, "validity-years", 1, "Issued cert validity years")
-	flag.IntVar(&scep.Config.PortMtls, "port", 8080, "PortMtls to run the server on")
+	flag.IntVar(&scep.Config.PortMtls, "port", 9443, "PortMtls to run the server on")
 	flag.IntVar(&scep.Config.PortTls, "port-tls", 8443, "PortTls to run the server on")
 	flag.StringVar(&scep.Config.Server, "server", "0.0.0.0", "Listen server address")
 	flag.Var(&scep.Config.AuthorizedDomains, "authorized-domains", "Comma separated list of authorized domains to issue")
 	flag.StringVar(&scep.Config.SpiffeIDs, "spiffe-ids", "spiffeids.yaml", "Config file with list of Spiffe IDs allowed to access the SCEP server")
+	flag.StringVar(&scep.Config.AllowedCNs, "allowed-cns", "allowedcns.yaml", "Config file with list of allowed client CNs")
 
 	flag.Parse()
 

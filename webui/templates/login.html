@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>Sign in</h1>
+<form method="post" action="/login" class="card narrow">
+  <label for="username">Username</label>
+  <input id="username" name="username" autocomplete="username" required autofocus value="{{.Username}}">
+  <label for="password">Password</label>
+  <input id="password" type="password" name="password" autocomplete="current-password" required>
+  <button type="submit">Sign in</button>
+</form>
+{{end}}

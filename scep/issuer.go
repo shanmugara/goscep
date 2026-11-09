@@ -1,14 +1,14 @@
 package scep
 
 import (
-	rand2 "crypto/rand"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"math/big"
-	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -50,6 +50,8 @@ func (c *CSR) CSRValidate() error {
 		logger.WithError(err).Error("Error validating CSR, GetExtendedKeyUsage")
 		return err
 	}
+	// store the parsed CSR in the struct for future use
+	c.Csr = csr
 
 	return nil
 }
@@ -69,26 +71,29 @@ func (c *CSR) ValidateSuffix(suffix string) error {
 func (c *CSR) Issue() ([]byte, error) {
 	logger := c.Logger.WithFields(logrus.Fields{"csr": c.CsrPEM})
 	logger.Info("Issuing certificate: ", c.CsrPEM)
-	csr, err := c.ParseCSR()
-	if err != nil {
-		return nil, err
-	}
+
 	var combinedKeyUsages x509.KeyUsage
 	for _, ku := range c.KeyUsages {
 		combinedKeyUsages |= ku
 	}
 
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		logger.WithError(err).Error("Error generating certificate serial number")
+		return nil, err
+	}
+
 	certTemplate := x509.Certificate{
-		SerialNumber: big.NewInt(rand.Int63()),
-		Subject:      csr.Subject,
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().AddDate(Config.ValidityYears, 0, 0),
-		KeyUsage:     combinedKeyUsages,
-		ExtKeyUsage:  c.ExtendedKeyUsage,
-		DNSNames:     csr.DNSNames,
-		IPAddresses:  csr.IPAddresses,
-		IsCA:         c.BC.IsCA,
-		MaxPathLen:   c.BC.MaxPathLen,
+		SerialNumber:          serialNumber,
+		Subject:               c.Csr.Subject,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(Config.ValidityYears, 0, 0),
+		KeyUsage:              combinedKeyUsages,
+		ExtKeyUsage:           c.ExtendedKeyUsage,
+		DNSNames:              c.Csr.DNSNames,
+		IPAddresses:           c.Csr.IPAddresses,
+		IsCA:                  false,
+		BasicConstraintsValid: true,
 	}
 
 	caPEM, err := os.ReadFile(Config.CARoot)
@@ -121,7 +126,7 @@ func (c *CSR) Issue() ([]byte, error) {
 		logger.WithError(err).Error("Error parsing CA key")
 		return nil, err
 	}
-	certDER, err := x509.CreateCertificate(rand2.Reader, &certTemplate, caCert, csr.PublicKey, caKey)
+	certDER, err := x509.CreateCertificate(rand.Reader, &certTemplate, caCert, c.Csr.PublicKey, caKey)
 	if err != nil {
 		logger.WithError(err).Error("Error creating certificate")
 		return nil, err
@@ -139,36 +144,35 @@ func (c *CSR) ParseCSR() (*x509.CertificateRequest, error) {
 	logger.Info("Parsing CSR")
 
 	if c.CsrPEM != "" {
-		csrPEM, err = os.ReadFile(c.CsrPEM)
-		if err != nil {
-			logger.WithError(err).Error("Error reading CSR")
-			return nil, err
-		}
+		return nil, fmt.Errorf("CSR PEM is deprecated, use CSR B64 or CSR Raw instead")
 	} else if c.CsrB64 != "" {
 		csrPEM, err = base64.StdEncoding.DecodeString(c.CsrB64)
 		if err != nil {
 			logger.WithError(err).Error("Error decoding CSR")
 			return nil, err
 		}
+	} else if len(c.CsrRaw) > 0 {
+		csrPEM = c.CsrRaw
 	} else {
 		logger.Error("No CSR provided")
 		return nil, errors.New("no CSR provided")
 	}
 
-	csrBlock, _ := pem.Decode(csrPEM)
+	return ParseCSRbytes(csrPEM)
+}
+
+func ParseCSRbytes(csrBytes []byte) (*x509.CertificateRequest, error) {
+	csrBlock, _ := pem.Decode(csrBytes)
 	if csrBlock == nil || csrBlock.Type != "CERTIFICATE REQUEST" {
-		logger.WithError(err).Error("Error reading CSR, invalid CSR")
 		return nil, errors.New("error reading CSR, invalid CSR")
 	}
 
 	csr, err := x509.ParseCertificateRequest(csrBlock.Bytes)
 	if err != nil {
-		logger.WithError(err).Error("Error parsing CSR")
 		return nil, err
 	}
 
 	if len(csr.DNSNames) == 0 {
-		logger.Error("CSR contains no SAN. Appending Common Name as SAN.")
 		csr.DNSNames = append(csr.DNSNames, csr.Subject.CommonName)
 	}
 	return csr, nil

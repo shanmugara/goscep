@@ -9,6 +9,8 @@ import (
 	"os"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/gin-gonic/gin"
 	"github.com/shanmugara/spireauthlib"
 	"github.com/sirupsen/logrus"
@@ -16,6 +18,11 @@ import (
 
 var Config *ServerConfig
 var Logger *logrus.Logger
+
+const (
+	ListenerMTLS = "mtls"
+	ListenerTLS  = "tls"
+)
 
 func Start() error {
 	// Ensure a logger is available for the package
@@ -29,8 +36,8 @@ func Start() error {
 	tlsCtx, tsCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer tsCancel()
 
-	router := gin.Default()
-	router.POST("/v1/cert/request", Request())
+	mtlsRouter := gin.Default()
+	mtlsRouter.POST("/v1/cert/request", Request(ListenerMTLS))
 	// get spire tls config
 	sAuth := spireauthlib.ServerAuth{Logger: Logger}
 	mtlsConfig, err := sAuth.GetTlsConfig(tlsCtx)
@@ -41,9 +48,12 @@ func Start() error {
 	}
 	srvMtls := &http.Server{
 		Addr:      fmt.Sprintf("%s:%d", Config.Server, Config.PortMtls),
-		Handler:   router,
+		Handler:   mtlsRouter,
 		TLSConfig: mtlsConfig,
 	}
+
+	tlsRouter := gin.Default()
+	tlsRouter.POST("/v1/cert/request", Request(ListenerTLS))
 
 	tlsConfig, err := BuildTlsConfig()
 	if err != nil {
@@ -53,7 +63,7 @@ func Start() error {
 
 	srvTls := &http.Server{
 		Addr:      fmt.Sprintf("%s:%d", Config.Server, Config.PortTls),
-		Handler:   router,
+		Handler:   tlsRouter,
 		TLSConfig: tlsConfig,
 	}
 	//Blocking call to start the server
@@ -104,23 +114,70 @@ func BuildTlsConfig() (*tls.Config, error) {
 	if ok := rootCAs.AppendCertsFromPEM(caCert); !ok {
 		return nil, fmt.Errorf("failed to append CA root certificate to pool")
 	}
+	allowedCNs, err := LoadAllowedCNs()
+	if err != nil {
+		Logger.Warnf("failed to load allowed CNs: %v", err)
+		allowedCNs = []string{}
+	}
+
+	// set client authentication to require and verify client certificate
 
 	tlsConfig := &tls.Config{
-		RootCAs:      rootCAs,
 		Certificates: []tls.Certificate{cert},
+		ClientCAs:    rootCAs,
 		MinVersion:   tls.VersionTLS12,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		VerifyConnection: func(cs tls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return fmt.Errorf("no client certificate presented")
+			}
+			cn := cs.PeerCertificates[0].Subject.CommonName
+			for _, allowed := range allowedCNs {
+				if cn == allowed {
+					return nil
+				}
+			}
+			Logger.Warnf("rejected client CN: %s", cn)
+			return fmt.Errorf("client CN %q not allowed", cn)
+		},
 	}
 
 	return tlsConfig, nil
 }
 
-func Request() gin.HandlerFunc {
+// AllowedCNsConfig reads from the YAML file containing allowed client CNs
+// and returns them as a slice of strings
+func LoadAllowedCNs() ([]string, error) {
+	var cfg AllowedCNsConfig
+	data, err := os.ReadFile(Config.AllowedCNs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read allowed CNs from %s: %w", Config.AllowedCNs, err)
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return cfg.AllowedCNs, nil
+}
+
+func Request(listener string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var csr CSR
-		if err := c.ShouldBindJSON(&csr); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+		if listener == ListenerMTLS {
+			if err := c.ShouldBindJSON(&csr); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 		}
+		if listener == ListenerTLS {
+			c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+			if csrBytes, err := c.GetRawData(); err != nil || len(csrBytes) == 0 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "request body size exceeded or empty"})
+				return
+			} else {
+				csr.CsrRaw = csrBytes
+			}
+		}
+
 		// use package logger if present, otherwise fall back to a new one
 		if Logger == nil {
 			csr.Logger = logrus.New()
@@ -129,6 +186,10 @@ func Request() gin.HandlerFunc {
 		}
 		if err := csr.CSRValidate(); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if csr.BC.IsCA {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "refusing to issue type CA"})
 			return
 		}
 		if pemBytes, err := csr.Issue(); err != nil {

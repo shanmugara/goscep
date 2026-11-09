@@ -1,0 +1,26 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · goscep</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">goscep</span>
+  {{if .User}}
+  <form method="post" action="/logout" class="signout">
+    <span class="who">{{.User}}</span>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="linkish">Sign out</button>
+  </form>
+  {{end}}
+</header>
+<main>
+  {{if .Error}}<div class="alert" role="alert">{{.Error}}</div>{{end}}
+  {{template "content" .}}
+</main>
+</body>
+</html>{{end}}

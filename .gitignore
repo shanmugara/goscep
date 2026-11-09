@@ -1,0 +1,10 @@
+.
+/bin
+/obj
+*.exe
+*.log
+*.out
+/.idea
+/.vscode
+.idea/
+.vscode/
