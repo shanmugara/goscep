@@ -1,0 +1,25 @@
+{{define "content"}}
+<h1>Request a certificate</h1>
+<p class="muted">You can request names under
+  {{range $i, $d := .Domains}}{{if $i}}, {{end}}<code>{{$d}}</code>{{end}}.</p>
+
+<form method="post" action="/submit" enctype="multipart/form-data" class="card">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label for="csr">Paste a CSR (PEM)</label>
+  <textarea id="csr" name="csr" rows="12" spellcheck="false" autocomplete="off"
+    placeholder="-----BEGIN CERTIFICATE REQUEST-----">{{.CSRText}}</textarea>
+  <label for="csrfile">or upload a CSR file</label>
+  <input id="csrfile" type="file" name="csrfile" accept=".csr,.req,.pem,.der">
+  <button type="submit">Submit CSR</button>
+</form>
+
+<details class="card help">
+  <summary>How do I create a CSR?</summary>
+  <pre>openssl req -new -newkey rsa:2048 -nodes \
+  -keyout {{.Example}}.key -out {{.Example}}.csr \
+  -subj "/CN={{.Example}}" \
+  -addext "subjectAltName=DNS:{{.Example}}" \
+  -addext "extendedKeyUsage=serverAuth"</pre>
+  <p class="muted">Keep the <code>.key</code> file private. Only submit the <code>.csr</code>.</p>
+</details>
+{{end}}

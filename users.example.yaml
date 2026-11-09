@@ -1,0 +1,17 @@
+# Web UI users, mounted into the goscep-webui container as /scep/users.yaml.
+# Changes are picked up on the next request; no restart needed.
+#
+# Generate a password hash with:
+#   docker run --rm -i shanmugara/goscep-webui:<tag> -hash-password
+#
+# allowed_domains limits which names a user may request: an entry allows the domain
+# itself and any subdomain (omegaworld.net allows host.omegaworld.net, not evilomegaworld.net).
+users:
+  - username: alice
+    password_hash: "<bcrypt hash from -hash-password>"
+    allowed_domains:
+      - omegaworld.net
+  - username: bob
+    password_hash: "<bcrypt hash from -hash-password>"
+    allowed_domains:
+      - web.omegaworld.net

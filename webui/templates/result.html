@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>Certificate issued</h1>
+<dl class="card meta">
+  <dt>Subject</dt><dd>{{.Cert.Subject}}</dd>
+  <dt>Names</dt><dd>{{range .Cert.Names}}<code>{{.}}</code> {{end}}</dd>
+  <dt>Serial</dt><dd><code class="wrap">{{.Cert.Serial}}</code></dd>
+  <dt>Valid until</dt><dd>{{.Cert.NotAfter}}</dd>
+</dl>
+
+<section class="card pane" aria-labelledby="pem-label">
+  <div class="pane-head">
+    <label id="pem-label" for="pem">Certificate (PEM)</label>
+    <div class="pane-actions">
+      <button type="button" class="secondary" data-copy="pem" hidden>Copy</button>
+      <a class="button" href="{{.Cert.DataURL}}" download="{{.Cert.FileName}}">Download {{.Cert.FileName}}</a>
+    </div>
+  </div>
+  <textarea id="pem" class="pem" readonly rows="{{.Cert.Lines}}" spellcheck="false" data-select-all>{{.Cert.PEM}}</textarea>
+  <p class="muted small">Copy everything from <code>-----BEGIN CERTIFICATE-----</code> to <code>-----END CERTIFICATE-----</code>, including those lines.</p>
+</section>
+
+<p><a href="/">Request another certificate</a></p>
+{{end}}
